@@ -382,3 +382,133 @@ def test_unsupported_version_raises_error():
     except CorruptedSchematicError as e:
         assert "Unsupported Litematica version" in str(e)
         assert "4" in str(e)
+
+
+def test_region_count_blocks():
+    """Test Region.count_blocks() method counts non-air blocks."""
+    # Create 5x5x5 region
+    region = Region(0, 0, 0, 5, 5, 5)
+
+    # Initially all air, should be 0
+    assert region.count_blocks() == 0
+
+    # Add one block
+    stone = BlockState("minecraft:stone")
+    region[0, 0, 0] = stone
+    assert region.count_blocks() == 1
+
+    # Add more blocks
+    region[1, 1, 1] = stone
+    region[2, 2, 2] = stone
+    assert region.count_blocks() == 3
+
+    # Replace one with air
+    region[1, 1, 1] = AIR
+    assert region.count_blocks() == 2
+
+    # Fill entire region
+    for x in range(5):
+        for y in range(5):
+            for z in range(5):
+                region[x, y, z] = stone
+    assert region.count_blocks() == 5 * 5 * 5
+
+
+def test_region_getblockcount_deprecated():
+    """Test Region.getblockcount() deprecated alias."""
+    region = Region(0, 0, 0, 3, 3, 3)
+    stone = BlockState("minecraft:stone")
+
+    region[0, 0, 0] = stone
+    region[1, 1, 1] = stone
+
+    # Test deprecated alias works the same
+    assert region.getblockcount() == region.count_blocks()
+    assert region.getblockcount() == 2
+
+
+def test_region_volume():
+    """Test Region.volume() method calculates total volume."""
+    # Positive dimensions
+    region1 = Region(0, 0, 0, 10, 20, 30)
+    assert region1.volume() == 10 * 20 * 30
+    assert region1.volume() == 6000
+
+    # Single block
+    region2 = Region(0, 0, 0, 1, 1, 1)
+    assert region2.volume() == 1
+
+    # Negative dimensions (should use absolute value)
+    region3 = Region(0, 0, 0, -10, -20, -30)
+    assert region3.volume() == 10 * 20 * 30
+    assert region3.volume() == 6000
+
+    # Mixed positive and negative
+    region4 = Region(0, 0, 0, 5, -10, 15)
+    assert region4.volume() == 5 * 10 * 15
+    assert region4.volume() == 750
+
+
+def test_region_getvolume_deprecated():
+    """Test Region.getvolume() deprecated alias."""
+    region = Region(0, 0, 0, 7, 8, 9)
+
+    # Test deprecated alias works the same
+    assert region.getvolume() == region.volume()
+    assert region.getvolume() == 7 * 8 * 9
+
+
+def test_region_count_blocks_vs_volume():
+    """Test count_blocks returns non-air count while volume returns total capacity."""
+    region = Region(0, 0, 0, 4, 4, 4)
+
+    # Volume is always total capacity
+    assert region.volume() == 4 * 4 * 4
+    assert region.volume() == 64
+
+    # Initially all air, count is 0
+    assert region.count_blocks() == 0
+
+    # Fill half with stone
+    stone = BlockState("minecraft:stone")
+    for x in range(2):
+        for y in range(4):
+            for z in range(4):
+                region[x, y, z] = stone
+
+    # Volume unchanged, count reflects non-air blocks
+    assert region.volume() == 64
+    assert region.count_blocks() == 2 * 4 * 4
+    assert region.count_blocks() == 32
+
+    # Fill completely
+    for x in range(4):
+        for y in range(4):
+            for z in range(4):
+                region[x, y, z] = stone
+
+    # Both should equal now
+    assert region.count_blocks() == region.volume()
+    assert region.count_blocks() == 64
+
+
+def test_region_count_blocks_empty_region():
+    """Test count_blocks on completely empty region."""
+    region = Region(0, 0, 0, 10, 10, 10)
+    assert region.count_blocks() == 0
+    assert region.volume() == 1000
+
+
+def test_region_count_blocks_full_region():
+    """Test count_blocks on completely filled region."""
+    region = Region(0, 0, 0, 3, 3, 3)
+    stone = BlockState("minecraft:stone")
+
+    # Fill completely
+    for x in range(3):
+        for y in range(3):
+            for z in range(3):
+                region[x, y, z] = stone
+
+    assert region.count_blocks() == 27
+    assert region.volume() == 27
