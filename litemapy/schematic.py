@@ -399,6 +399,58 @@ class Schematic:
     def preview(self, value) -> None:
         self.__preview = value
 
+    @staticmethod
+    def _rgba_to_argb(rgba: list[int]) -> list[int]:
+        """
+        Convert RGBA pixel data to ARGB format for Litematica preview images.
+
+        Litematica stores preview images as ARGB (A=alpha, R=red, G=green, B=blue),
+        but most image libraries use RGBA format.
+
+        :param rgba: List of RGBA values as integers (0xAABBGGRR or similar)
+        :returns: List of ARGB values as integers
+        """
+        argb = []
+        for pixel in rgba:
+            # Extract RGBA components
+            r = (pixel >> 24) & 0xFF if pixel >> 24 != 0 else (pixel >> 16) & 0xFF
+            g = (pixel >> 16) & 0xFF if pixel >> 24 != 0 else (pixel >> 8) & 0xFF
+            b = (pixel >> 8) & 0xFF if pixel >> 24 != 0 else pixel & 0xFF
+            a = pixel & 0xFF if pixel >> 24 != 0 else (pixel >> 24) & 0xFF
+
+            # Reassemble as ARGB
+            argb_pixel = (
+                ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF)
+            )
+            argb.append(argb_pixel)
+        return argb
+
+    @staticmethod
+    def _argb_to_rgba(argb: list[int]) -> list[int]:
+        """
+        Convert ARGB pixel data to RGBA format from Litematica preview images.
+
+        Litematica stores preview images as ARGB (A=alpha, R=red, G=green, B=blue),
+        but most image libraries use RGBA format.
+
+        :param argb: List of ARGB values as integers
+        :returns: List of RGBA values as integers
+        """
+        rgba = []
+        for pixel in argb:
+            # Extract ARGB components
+            a = (pixel >> 24) & 0xFF
+            r = (pixel >> 16) & 0xFF
+            g = (pixel >> 8) & 0xFF
+            b = pixel & 0xFF
+
+            # Reassemble as RGBA
+            rgba_pixel = (
+                ((r & 0xFF) << 24) | ((g & 0xFF) << 16) | ((b & 0xFF) << 8) | (a & 0xFF)
+            )
+            rgba.append(rgba_pixel)
+        return rgba
+
 
 class Region:
     """
