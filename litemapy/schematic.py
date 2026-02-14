@@ -1009,6 +1009,17 @@ class Region:
                 for z in self.range_z():
                     yield x, y, z
 
+    def blocks(self) -> Generator[tuple[tuple[int, int, int], BlockState], None, None]:
+        """
+        Create an iterator over all blocks in this region.
+
+        Each item will be a tuple of the local coordinates of this block, and the block state itself.
+
+        :returns:   an iterator yielding (position, block_state) tuples
+        """
+        for pos in self.block_positions():
+            yield pos, self[pos]
+
     @property
     def x(self) -> int:
         """
@@ -1067,9 +1078,47 @@ class Region:
     @property
     def tile_entities(self) -> list[TileEntity]:
         """
-        The tile entities within the region.
+        The tile entities in the region.
         """
         return self.__tile_entities
+
+    def get_block_entity(self, pos: tuple[int, int, int]) -> TileEntity | None:
+        """
+        Find a block entity by its position.
+
+        :param pos: The position to search for (x, y, z)
+        :returns: The block entity at that position, or None if not found
+        """
+        for entity in self.__tile_entities:
+            if entity.position == pos:
+                return entity
+        return None
+
+    def set_block_entity(self, block_entity: TileEntity) -> TileEntity | None:
+        """
+        Replace or add a block entity.
+
+        :param block_entity: The block entity to set
+        :returns: The previous block entity if there already was one at the same position, None otherwise
+        """
+        for i, entity in enumerate(self.__tile_entities):
+            if entity.position == block_entity.position:
+                self.__tile_entities[i] = block_entity
+                return entity
+        self.__tile_entities.append(block_entity)
+        return None
+
+    def remove_block_entity(self, pos: tuple[int, int, int]) -> TileEntity | None:
+        """
+        Remove the block entity at the given position.
+
+        :param pos: The position of the block entity to remove
+        :returns: The removed block entity if there was one, None otherwise
+        """
+        for i, entity in enumerate(self.__tile_entities):
+            if entity.position == pos:
+                return self.__tile_entities.pop(i)
+        return None
 
     @property
     def block_ticks(self) -> list[Compound]:
