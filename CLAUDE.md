@@ -89,31 +89,31 @@ Represents a block entity (chests, signs, etc.) with additional data.
 git clone https://github.com/SmylerMC/litemapy.git
 cd litemapy
 
-# Install in development mode
-pip install -e .
+# Install in development mode using uv
+uv pip install -e .
 
-# Install dependencies
-pip install nbtlib>=2.0.3 typing_extensions
+# Or install dependencies via uv (recommended)
+uv pip install nbtlib>=2.0.3 typing_extensions
 ```
 
 ### Running Tests
 
 ```bash
 # Run all tests
-python -m pytest tests/
+uv run pytest tests/
 
 # Run specific test file
-python -m pytest tests/test_schematics.py
+uv run pytest tests/test_schematics.py
 
 # Run with verbose output
-python -m pytest -v tests/
+uv run pytest -v tests/
 ```
 
 ### Building Documentation
 
 ```bash
 cd docs
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 make html
 # Output will be in docs/build/html/
 ```
