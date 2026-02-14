@@ -40,11 +40,16 @@ class Schematic:
         """
         Schematic can be created by optionally providing metadata and regions, or leaving them blank or default.
 
+        Litemapy supports Litematica v5, v6, and v7 formats. All versions use tight packing
+        for efficient block storage. New schematics default to v7, the current Litematica version.
+        v5 is legacy but still supported for backward compatibility.
+
         :param name:        The name of the schematic to write in the metadata
         :param author:      The name of the author to write in the metadata
         :param description: The description to write in the metadata
         :param regions:     Regions to populate the schematic with
-        :param lm_version:  The litematic version (you are unlikely to ever need to use this)
+        :param lm_version:  The litematic version (defaults to v7, supports v5/v6/v7)
+        :param lm_subversion: The litematic subversion (you are unlikely to ever need to use this)
         :param mc_version:  The Minecraft data version (you are unlikely to ever need to use this)
         """
         if regions is None:
@@ -68,6 +73,10 @@ class Schematic:
              byteorder: str = 'big') -> None:
         """
         Save this schematic to a file.
+
+        The schematic is saved using the Litematica version specified in self.lm_version.
+        By default, new schematics use v7, but schematics loaded from files will maintain
+        their original version (v5/v6/v7) unless explicitly changed.
 
         :param file_path:   the filesystem path the schematic should be saved to
         :param update_meta: whether to update the schematic's metadata before saving
@@ -129,16 +138,26 @@ class Schematic:
         """
         Read a schematic from an NBT tag.
 
+        Supports Litematica v5, v6, and v7 formats. All versions use tight packing
+        for block data. v5 is legacy but still supported for backward compatibility.
+
         :param nbt: a schematic serialized as an NBT tag
 
         :rtype:     Schematic
 
-        :raises CorruptedSchematicError: if the schematic tag is malformed
+        :raises CorruptedSchematicError: if the schematic tag is malformed or uses an unsupported version
         """
         meta: Compound = nbt["Metadata"]
         lm_version: Int = nbt["Version"]
         lm_subversion: Int = nbt.get("SubVersion", 0)
         mc_version: Int = nbt["MinecraftDataVersion"]
+
+        # Validate Litematica version (v5, v6, and v7 are supported)
+        # v5 is legacy but still supported for backward compatibility
+        if int(lm_version) not in (5, 6, 7):
+            raise CorruptedSchematicError(
+                f"Unsupported Litematica version {lm_version}. Only versions 5, 6, and 7 are supported."
+            )
         width = int(meta["EnclosingSize"]["x"])
         height = int(meta["EnclosingSize"]["y"])
         length = int(meta["EnclosingSize"]["z"])

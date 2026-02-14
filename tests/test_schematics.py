@@ -3,6 +3,8 @@ from os import walk
 from constants import *
 import helper
 from tempfile import TemporaryDirectory
+import nbtlib
+import nbtlib.tag
 
 AIR = BlockState("minecraft:air")
 
@@ -285,3 +287,98 @@ def test_subversion():
         schematic.save(name)
         schematic = Schematic.load(name)
     assert schematic.lm_subversion == 1337
+
+
+def test_v6_and_v7_support():
+    """Test that both Litematica v6 and v7 formats are supported."""
+    # Create a test region with some blocks
+    reg = Region(0, 0, 0, 5, 5, 5)
+    reg[0, 0, 0] = BlockState("minecraft:stone")
+    reg[1, 1, 1] = BlockState("minecraft:oak_planks")
+    reg[2, 2, 2] = BlockState("minecraft:glass")
+
+    with TemporaryDirectory() as temp:
+        # Test v6
+        schem_v6 = Schematic(
+            name="Test v6",
+            author="Test",
+            description="Testing v6",
+            regions={"main": reg},
+            lm_version=6
+        )
+        assert schem_v6.lm_version == 6
+
+        v6_path = path.join(temp, "test_v6.litematic")
+        schem_v6.save(v6_path)
+
+        # Load v6 schematic
+        loaded_v6 = Schematic.load(v6_path)
+        assert loaded_v6.lm_version == 6
+        assert loaded_v6.name == "Test v6"
+        assert "main" in loaded_v6.regions
+        loaded_reg_v6 = loaded_v6.regions["main"]
+        assert loaded_reg_v6[0, 0, 0] == BlockState("minecraft:stone")
+        assert loaded_reg_v6[1, 1, 1] == BlockState("minecraft:oak_planks")
+        assert loaded_reg_v6[2, 2, 2] == BlockState("minecraft:glass")
+
+        # Test v7
+        schem_v7 = Schematic(
+            name="Test v7",
+            author="Test",
+            description="Testing v7",
+            regions={"main": reg},
+            lm_version=7
+        )
+        assert schem_v7.lm_version == 7
+
+        v7_path = path.join(temp, "test_v7.litematic")
+        schem_v7.save(v7_path)
+
+        # Load v7 schematic
+        loaded_v7 = Schematic.load(v7_path)
+        assert loaded_v7.lm_version == 7
+        assert loaded_v7.name == "Test v7"
+        assert "main" in loaded_v7.regions
+        loaded_reg_v7 = loaded_v7.regions["main"]
+        assert loaded_reg_v7[0, 0, 0] == BlockState("minecraft:stone")
+        assert loaded_reg_v7[1, 1, 1] == BlockState("minecraft:oak_planks")
+        assert loaded_reg_v7[2, 2, 2] == BlockState("minecraft:glass")
+
+
+def test_unsupported_version_raises_error():
+    """Test that unsupported Litematica versions raise an error."""
+    from litemapy.schematic import CorruptedSchematicError
+    from nbtlib.tag import Compound, Int
+
+    # Create a mock NBT with unsupported version
+    nbt = Compound()
+    nbt["Version"] = Int(4)  # Unsupported version (v4 is not supported)
+    nbt["SubVersion"] = Int(0)
+    nbt["MinecraftDataVersion"] = Int(2975)
+
+    metadata = Compound()
+    metadata["Name"] = nbtlib.tag.String("Test")
+    metadata["Author"] = nbtlib.tag.String("Test")
+    metadata["Description"] = nbtlib.tag.String("Test")
+    metadata["TimeCreated"] = nbtlib.tag.Long(0)
+    metadata["TimeModified"] = nbtlib.tag.Long(0)
+    metadata["RegionCount"] = Int(0)
+    metadata["TotalBlocks"] = Int(0)
+    metadata["TotalVolume"] = Int(0)
+
+    enclosing = Compound()
+    enclosing["x"] = Int(0)
+    enclosing["y"] = Int(0)
+    enclosing["z"] = Int(0)
+    metadata["EnclosingSize"] = enclosing
+
+    nbt["Metadata"] = metadata
+    nbt["Regions"] = Compound()
+
+    # This should raise CorruptedSchematicError
+    try:
+        Schematic.from_nbt(nbt)
+        assert False, "Expected CorruptedSchematicError for unsupported version"
+    except CorruptedSchematicError as e:
+        assert "Unsupported Litematica version" in str(e)
+        assert "4" in str(e)
