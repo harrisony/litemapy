@@ -3,7 +3,18 @@ from time import time
 
 import nbtlib
 import numpy as np
-from nbtlib.tag import Short, Byte, Int, Long, Double, String, List, Compound, ByteArray, IntArray
+from nbtlib.tag import (
+    Short,
+    Byte,
+    Int,
+    Long,
+    Double,
+    String,
+    List,
+    Compound,
+    ByteArray,
+    IntArray,
+)
 from typing_extensions import deprecated
 
 from typing import Any, Generator, Callable, Optional
@@ -22,7 +33,7 @@ class Schematic:
     name: str
     author: str
     description: str
-    region: dict[str, 'Region']
+    region: dict[str, "Region"]
     lm_version: int
     lm_subversion: int
     mc_version: int
@@ -31,20 +42,29 @@ class Schematic:
     __regions: DiscriminatingDictionary
     __preview: IntArray
 
-    def __init__(self,
-                 name: str = DEFAULT_NAME, author: str = "", description: str = "",
-                 regions: Optional[dict[str, 'Region']] = None,
-                 lm_version: int = LITEMATIC_VERSION, lm_subversion: int = LITEMATIC_SUBVERSION,
-                 mc_version: int = MC_DATA_VERSION
-                 ) -> None:
+    def __init__(
+        self,
+        name: str = DEFAULT_NAME,
+        author: str = "",
+        description: str = "",
+        regions: Optional[dict[str, "Region"]] = None,
+        lm_version: int = LITEMATIC_VERSION,
+        lm_subversion: int = LITEMATIC_SUBVERSION,
+        mc_version: int = MC_DATA_VERSION,
+    ) -> None:
         """
         Schematic can be created by optionally providing metadata and regions, or leaving them blank or default.
+
+        Litemapy supports Litematica v5, v6, and v7 formats. All versions use tight packing
+        for efficient block storage. New schematics default to v7, the current Litematica version.
+        v5 is legacy but still supported for backward compatibility.
 
         :param name:        The name of the schematic to write in the metadata
         :param author:      The name of the author to write in the metadata
         :param description: The description to write in the metadata
         :param regions:     Regions to populate the schematic with
-        :param lm_version:  The litematic version (you are unlikely to ever need to use this)
+        :param lm_version:  The litematic version (defaults to v7, supports v5/v6/v7)
+        :param lm_subversion: The litematic subversion (you are unlikely to ever need to use this)
         :param mc_version:  The Minecraft data version (you are unlikely to ever need to use this)
         """
         if regions is None:
@@ -54,8 +74,11 @@ class Schematic:
         self.name = name
         self.created = round(time() * 1000)
         self.modified = round(time() * 1000)
-        self.__regions = DiscriminatingDictionary(self._can_add_region,
-                                                  onadd=self.__on_region_add, onremove=self.__on_region_remove)
+        self.__regions = DiscriminatingDictionary(
+            self._can_add_region,
+            onadd=self.__on_region_add,
+            onremove=self.__on_region_remove,
+        )
         self.__compute_enclosure()
         if regions is not None and len(regions) > 0:
             self.__regions.update(regions)
@@ -64,10 +87,20 @@ class Schematic:
         self.lm_subversion = lm_subversion
         self.__preview = IntArray([])
 
-    def save(self, file_path: str, update_meta: bool = True, save_soft: bool = True, gzipped: bool = True,
-             byteorder: str = 'big') -> None:
+    def save(
+        self,
+        file_path: str,
+        update_meta: bool = True,
+        save_soft: bool = True,
+        gzipped: bool = True,
+        byteorder: str = "big",
+    ) -> None:
         """
         Save this schematic to a file.
+
+        The schematic is saved using the Litematica version specified in self.lm_version.
+        By default, new schematics use v7, but schematics loaded from files will maintain
+        their original version (v5/v6/v7) unless explicitly changed.
 
         :param file_path:   the filesystem path the schematic should be saved to
         :param update_meta: whether to update the schematic's metadata before saving
@@ -80,7 +113,9 @@ class Schematic:
         """
         if update_meta:
             self.update_metadata()
-        f = nbtlib.File(self.to_nbt(save_soft=save_soft), gzipped=gzipped, byteorder=byteorder)
+        f = nbtlib.File(
+            self.to_nbt(save_soft=save_soft), gzipped=gzipped, byteorder=byteorder
+        )
         f.save(file_path)
 
     def to_nbt(self, save_soft: bool = True) -> Compound:
@@ -113,9 +148,13 @@ class Schematic:
         meta["RegionCount"] = Int(len(self.regions))
         meta["TimeCreated"] = Long(self.created)
         meta["TimeModified"] = Long(self.modified)
-        meta["TotalBlocks"] = Int(sum([reg.getblockcount() for reg in self.regions.values()]))
-        meta["TotalVolume"] = Int(sum([reg.getvolume() for reg in self.regions.values()]))
-        meta['PreviewImageData'] = self.__preview
+        meta["TotalBlocks"] = Int(
+            sum([reg.getblockcount() for reg in self.regions.values()])
+        )
+        meta["TotalVolume"] = Int(
+            sum([reg.getvolume() for reg in self.regions.values()])
+        )
+        meta["PreviewImageData"] = self.__preview
         root["Metadata"] = meta
         regs = Compound()
         for name, region in self.regions.items():
@@ -125,48 +164,75 @@ class Schematic:
 
     @deprecated_name("fromnbt")
     @staticmethod
-    def from_nbt(nbt: Compound) -> 'Schematic':
+    def from_nbt(nbt: Compound) -> "Schematic":
         """
         Read a schematic from an NBT tag.
+
+        Supports Litematica v5, v6, and v7 formats. All versions use tight packing
+        for block data. v5 is legacy but still supported for backward compatibility.
 
         :param nbt: a schematic serialized as an NBT tag
 
         :rtype:     Schematic
 
-        :raises CorruptedSchematicError: if the schematic tag is malformed
+        :raises CorruptedSchematicError: if the schematic tag is malformed or uses an unsupported version
         """
         meta: Compound = nbt["Metadata"]
         lm_version: Int = nbt["Version"]
         lm_subversion: Int = nbt.get("SubVersion", 0)
         mc_version: Int = nbt["MinecraftDataVersion"]
+
+        # Validate Litematica version (v5, v6, and v7 are supported)
+        # v5 is legacy but still supported for backward compatibility
+        if int(lm_version) not in (5, 6, 7):
+            raise CorruptedSchematicError(
+                f"Unsupported Litematica version {lm_version}. Only versions 5, 6, and 7 are supported."
+            )
         width = int(meta["EnclosingSize"]["x"])
         height = int(meta["EnclosingSize"]["y"])
         length = int(meta["EnclosingSize"]["z"])
         author = str(meta["Author"])
         name = str(meta["Name"])
         desc = str(meta["Description"])
-        regions: dict[str, 'Region'] = {}
+        regions: dict[str, "Region"] = {}
         for key, value in nbt["Regions"].items():
             reg = Region.from_nbt(value)
             regions[str(key)] = reg
-        schematic = Schematic(name=name, author=author, description=desc, regions=regions,
-                              lm_version=lm_version, lm_subversion=lm_subversion,
-                              mc_version=mc_version)
+        schematic = Schematic(
+            name=name,
+            author=author,
+            description=desc,
+            regions=regions,
+            lm_version=lm_version,
+            lm_subversion=lm_subversion,
+            mc_version=mc_version,
+        )
         if schematic.width != width:
             raise CorruptedSchematicError(
-                "Invalid schematic width in metadata, excepted {} was {}".format(schematic.width, width))
+                "Invalid schematic width in metadata, excepted {} was {}".format(
+                    schematic.width, width
+                )
+            )
         if schematic.height != height:
             raise CorruptedSchematicError(
-                "Invalid schematic height in metadata, excepted {} was {}".format(schematic.height, height))
+                "Invalid schematic height in metadata, excepted {} was {}".format(
+                    schematic.height, height
+                )
+            )
         if schematic.length != length:
             raise CorruptedSchematicError(
-                "Invalid schematic length in metadata, excepted {} was {}".format(schematic.length, length))
+                "Invalid schematic length in metadata, excepted {} was {}".format(
+                    schematic.length, length
+                )
+            )
         schematic.created = int(meta["TimeCreated"])
         schematic.modified = int(meta["TimeModified"])
         if "RegionCount" in meta and len(schematic.regions) != meta["RegionCount"]:
-            raise CorruptedSchematicError("Number of regions in metadata does not match the number of parsed regions")
-        if 'PreviewImageData' in meta.keys():
-            schematic.__preview = meta['PreviewImageData']
+            raise CorruptedSchematicError(
+                "Number of regions in metadata does not match the number of parsed regions"
+            )
+        if "PreviewImageData" in meta.keys():
+            schematic.__preview = meta["PreviewImageData"]
         return schematic
 
     @deprecated_name("updatemeta")
@@ -177,7 +243,7 @@ class Schematic:
         self.modified = round(time() * 1000)
 
     @staticmethod
-    def load(file_path) -> 'Schematic':
+    def load(file_path) -> "Schematic":
         """
         Read a schematic from a file.
 
@@ -190,56 +256,57 @@ class Schematic:
         nbt = nbtlib.File.load(file_path, True)
         return Schematic.from_nbt(nbt)
 
-    def _can_add_region(self, name: str, region: 'Region') -> tuple[bool, str]:
+    def _can_add_region(self, name: str, region: "Region") -> tuple[bool, str]:
         if type(name) != str:
             return False, "Region name should be a string"
         return True, ""
 
-    def __on_region_add(self, name: str, region: 'Region') -> None:
-        if self.__x_min is None:
-            self.__x_min = region.min_schem_x()
-        else:
-            self.__x_min = min(self.__x_min, region.min_schem_x())
-        if self.__x_max is None:
-            self.__x_max = region.max_schem_x()
-        else:
-            self.__x_max = max(self.__x_max, region.max_schem_x())
-        if self.__y_min is None:
-            self.__y_min = region.min_schem_y()
-        else:
-            self.__y_min = min(self.__y_min, region.min_schem_y())
-        if self.__y_max is None:
-            self.__y_max = region.max_schem_y()
-        else:
-            self.__y_max = max(self.__y_max, region.max_schem_y())
-        if self.__z_min is None:
-            self.__z_min = region.min_schem_z()
-        else:
-            self.__z_min = min(self.__z_min, region.min_schem_z())
-        if self.__z_max is None:
-            self.__z_max = region.max_schem_z()
-        else:
-            self.__z_max = max(self.__z_max, region.max_schem_z())
+    def __on_region_add(self, name: str, region: "Region") -> None:
+        bounds = [
+            ("x_min", region.min_schem_x()),
+            ("x_max", region.max_schem_x()),
+            ("y_min", region.min_schem_y()),
+            ("y_max", region.max_schem_y()),
+            ("z_min", region.min_schem_z()),
+            ("z_max", region.max_schem_z()),
+        ]
+        for attr, value in bounds:
+            current = getattr(self, f"_Schematic__{attr}")
+            if current is None:
+                setattr(self, f"_Schematic__{attr}", value)
+            elif "min" in attr:
+                setattr(self, f"_Schematic__{attr}", min(current, value))
+            else:
+                setattr(self, f"_Schematic__{attr}", max(current, value))
 
     def __on_region_remove(self, name, region) -> None:
-        bounding_box_changed: bool = self.__x_min == region.minschemx()
-        bounding_box_changed = bounding_box_changed or self.__x_max == region.maxschemx()
-        bounding_box_changed = bounding_box_changed or self.__y_min == region.minschemy()
-        bounding_box_changed = bounding_box_changed or self.__y_max == region.maxschemy()
-        bounding_box_changed = bounding_box_changed or self.__z_min == region.minschemz()
-        bounding_box_changed = bounding_box_changed or self.__z_max == region.maxschemz()
-        if bounding_box_changed:
+        bounds = [
+            (self.__x_min, region.minschemx()),
+            (self.__x_max, region.maxschemx()),
+            (self.__y_min, region.minschemy()),
+            (self.__y_max, region.maxschemy()),
+            (self.__z_min, region.minschemz()),
+            (self.__z_max, region.maxschemz()),
+        ]
+        if any(current == region_value for current, region_value in bounds):
             self.__compute_enclosure()
 
     def __compute_enclosure(self):
         x_min, x_max, y_min, y_max, z_min, z_max = None, None, None, None, None, None
         for region in self.__regions.values():
-            x_min = min(x_min, region.minschemx()) if x_min is not None else region.minschemx()
-            x_max = max(x_max, region.maxschemx()) if x_max is not None else region.maxschemx()
-            y_min = min(y_min, region.minschemy()) if y_min is not None else region.minschemy()
-            y_max = max(y_max, region.maxschemy()) if y_max is not None else region.maxschemy()
-            z_min = min(z_min, region.minschemz()) if z_min is not None else region.minschemz()
-            z_max = max(z_max, region.maxschemz()) if z_max is not None else region.maxschemz()
+            for attr, region_getter in [
+                ("x_min", region.minschemx),
+                ("x_max", region.maxschemx),
+                ("y_min", region.minschemy),
+                ("y_max", region.maxschemy),
+                ("z_min", region.minschemz),
+                ("z_max", region.maxschemz),
+            ]:
+                locals()[attr] = (
+                    min(locals()[attr], region_getter())
+                    if locals()[attr] is not None
+                    else region_getter()
+                )
         self.__x_min = x_min
         self.__x_max = x_max
         self.__y_min = y_min
@@ -299,11 +366,64 @@ class Schematic:
     def preview(self, value) -> None:
         self.__preview = value
 
+    @staticmethod
+    def _rgba_to_argb(rgba: list[int]) -> list[int]:
+        """
+        Convert RGBA pixel data to ARGB format for Litematica preview images.
+
+        Litematica stores preview images as ARGB (A=alpha, R=red, G=green, B=blue),
+        but most image libraries use RGBA format.
+
+        :param rgba: List of RGBA values as integers (0xAABBGGRR or similar)
+        :returns: List of ARGB values as integers
+        """
+        argb = []
+        for pixel in rgba:
+            # Extract RGBA components
+            r = (pixel >> 24) & 0xFF if pixel >> 24 != 0 else (pixel >> 16) & 0xFF
+            g = (pixel >> 16) & 0xFF if pixel >> 24 != 0 else (pixel >> 8) & 0xFF
+            b = (pixel >> 8) & 0xFF if pixel >> 24 != 0 else pixel & 0xFF
+            a = pixel & 0xFF if pixel >> 24 != 0 else (pixel >> 24) & 0xFF
+
+            # Reassemble as ARGB
+            argb_pixel = (
+                ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF)
+            )
+            argb.append(argb_pixel)
+        return argb
+
+    @staticmethod
+    def _argb_to_rgba(argb: list[int]) -> list[int]:
+        """
+        Convert ARGB pixel data to RGBA format from Litematica preview images.
+
+        Litematica stores preview images as ARGB (A=alpha, R=red, G=green, B=blue),
+        but most image libraries use RGBA format.
+
+        :param argb: List of ARGB values as integers
+        :returns: List of RGBA values as integers
+        """
+        rgba = []
+        for pixel in argb:
+            # Extract ARGB components
+            a = (pixel >> 24) & 0xFF
+            r = (pixel >> 16) & 0xFF
+            g = (pixel >> 8) & 0xFF
+            b = pixel & 0xFF
+
+            # Reassemble as RGBA
+            rgba_pixel = (
+                ((r & 0xFF) << 24) | ((g & 0xFF) << 16) | ((b & 0xFF) << 8) | (a & 0xFF)
+            )
+            rgba.append(rgba_pixel)
+        return rgba
+
 
 class Region:
     """
     Represents a schematic region.
     """
+
     __x: int
     __y: int
     __z: int
@@ -311,7 +431,9 @@ class Region:
     __height: int
     __length: int
     __palette: list[BlockState]
-    __blocks: np.ndarray[np.uint32, Any]  # TODO replace any with the right shape when numpy supports its
+    __blocks: np.ndarray[
+        np.uint32, Any
+    ]  # TODO replace any with the right shape when numpy supports its
     __entities: list[Entity]
     __block_ticks: list[Compound]
     __fluid_ticks: list[Compound]
@@ -332,8 +454,12 @@ class Region:
             raise ValueError("Region dimensions cannot be 0")
         self.__x, self.__y, self.__z = x, y, z
         self.__width, self.__height, self.__length = width, height, length
-        self.__palette = [AIR, ]
-        self.__blocks = np.zeros((abs(width), abs(height), abs(length)), dtype=np.uint32)
+        self.__palette = [
+            AIR,
+        ]
+        self.__blocks = np.zeros(
+            (abs(width), abs(height), abs(length)), dtype=np.uint32
+        )
         self.__entities = []
         self.__tile_entities = []
         self.__block_ticks = []
@@ -365,7 +491,9 @@ class Region:
         entities = List[Compound]([entity.to_nbt() for entity in self.__entities])
         root["Entities"] = entities
 
-        tile_entities = List[Compound]([tile_entity.to_nbt() for tile_entity in self.__tile_entities])
+        tile_entities = List[Compound](
+            [tile_entity.to_nbt() for tile_entity in self.__tile_entities]
+        )
         root["TileEntities"] = tile_entities
 
         root["PendingBlockTicks"] = List[Compound](self.__block_ticks)
@@ -375,14 +503,22 @@ class Region:
         for x in range(abs(self.__width)):
             for y in range(abs(self.__height)):
                 for z in range(abs(self.__length)):
-                    ind = (y * abs(self.__width * self.__length)) + z * abs(self.__width) + x
+                    ind = (
+                        (y * abs(self.__width * self.__length))
+                        + z * abs(self.__width)
+                        + x
+                    )
                     arr[ind] = int(self.__blocks[x, y, z])
         root["BlockStates"] = arr._to_nbt_long_array()
 
         return root
 
-    def to_sponge_nbt(self, mc_version: int = MC_DATA_VERSION, gzipped: bool = True,
-                      endianness: str = 'big') -> nbtlib.nbt.File:
+    def to_sponge_nbt(
+        self,
+        mc_version: int = MC_DATA_VERSION,
+        gzipped: bool = True,
+        endianness: str = "big",
+    ) -> nbtlib.nbt.File:
         """
         Returns the Region as an NBT Compound file that conforms to the Sponge Schematic Format (version 2) used by mods
         like WorldEdit.
@@ -406,14 +542,14 @@ class Region:
 
         nbt = nbtlib.File(gzipped=gzipped, byteorder=endianness)
 
-        nbt['DataVersion'] = Int(mc_version)
-        nbt['Version'] = Int(SPONGE_VERSION)
+        nbt["DataVersion"] = Int(mc_version)
+        nbt["Version"] = Int(SPONGE_VERSION)
 
-        nbt['Width'] = Short(abs(self.__width))
-        nbt['Height'] = Short(abs(self.__height))
-        nbt['Length'] = Short(abs(self.__length))
+        nbt["Width"] = Short(abs(self.__width))
+        nbt["Height"] = Short(abs(self.__height))
+        nbt["Length"] = Short(abs(self.__length))
 
-        nbt['Offset'] = IntArray([Int(0), Int(0), Int(0)])  # not strictly necessary
+        nbt["Offset"] = IntArray([Int(0), Int(0), Int(0)])  # not strictly necessary
 
         # process entities
         size = (self.__width, self.__height, self.__length)
@@ -423,19 +559,20 @@ class Region:
             for key, value in entity.data.items():
                 entity_tag[key] = value
 
-            entity_tag['Pos'] = List[Double](
-                [Double(coord - (0 if dim > 0 else (dim + 1))) for coord, dim in zip(entity.position, size)])
+            entity_tag["Pos"] = List[Double](
+                [Double(coord) for coord in entity.position]
+            )
             keys = entity.data.keys()
-            if 'TileX' in keys:
-                entity_tag['TileX'] = Int(entity_tag['Pos'][0])
-                entity_tag['TileY'] = Int(entity_tag['Pos'][1])
-                entity_tag['TileZ'] = Int(entity_tag['Pos'][2])
+            if "TileX" in keys:
+                entity_tag["TileX"] = Int(entity_tag["Pos"][0])
+                entity_tag["TileY"] = Int(entity_tag["Pos"][1])
+                entity_tag["TileZ"] = Int(entity_tag["Pos"][2])
 
-            entity_tag['Id'] = entity_tag['id']
-            del entity_tag['id']
+            entity_tag["Id"] = entity_tag["id"]
+            del entity_tag["id"]
             entities.append(entity_tag)
 
-        nbt['Entities'] = entities
+        nbt["Entities"] = entities
 
         # process tile entities
         tile_entities = List[Compound]()
@@ -444,21 +581,23 @@ class Region:
             for key, value in tile_entity.data.items():
                 tile_entity_tag[key] = value
 
-            tile_entity_tag['Pos'] = IntArray([Int(coord) for coord in tile_entity.position])
-            for key in ['x', 'y', 'z']:
+            tile_entity_tag["Pos"] = IntArray(
+                [Int(coord) for coord in tile_entity.position]
+            )
+            for key in ["x", "y", "z"]:
                 del tile_entity_tag[key]
             tile_entities.append(tile_entity_tag)
 
-        nbt['BlockEntities'] = tile_entities
+        nbt["BlockEntities"] = tile_entities
 
         # process block palette
-        nbt['PaletteMax'] = Int(len(self.__palette))
+        nbt["PaletteMax"] = Int(len(self.__palette))
         palette = Compound()
         for i, block in enumerate(self.__palette):
             state = block.to_block_state_identifier()
             palette[state] = Int(i)
 
-        nbt['Palette'] = palette
+        nbt["Palette"] = palette
 
         # process blocks
         block_array = []
@@ -470,12 +609,12 @@ class Region:
             x = i_in_layer % abs(self.__width)
             block_array.append(self.__blocks[x, y, z])
 
-        nbt['BlockData'] = ByteArray([Byte(id) for id in block_array])
+        nbt["BlockData"] = ByteArray([Byte(id) for id in block_array])
 
         return nbt
 
     @staticmethod
-    def from_sponge_nbt(nbt: Compound) -> tuple['Region', int]:
+    def from_sponge_nbt(nbt: Compound) -> tuple["Region", int]:
         """
         Returns a Litematica Region based on an NBT Compound that conforms to the Sponge Schematic Format (version 2)
         used by mods like WorldEdit.
@@ -490,19 +629,19 @@ class Region:
 
         # TODO Needs unit tests
 
-        mc_version = nbt['DataVersion']
-        width = int(nbt['Width'])
-        height = int(nbt['Height'])
-        length = int(nbt['Length'])
+        mc_version = nbt["DataVersion"]
+        width = int(nbt["Width"])
+        height = int(nbt["Height"])
+        length = int(nbt["Length"])
         region = Region(0, 0, 0, width, height, length)
-        offset = nbt['Offset']
+        offset = nbt["Offset"]
 
         # process entities
-        for entity in nbt['Entities']:
-            if 'Id' not in entity.keys():
-                raise RequiredKeyMissingException('Id')
-            entity['id'] = entity['Id']
-            del entity['Id']
+        for entity in nbt["Entities"]:
+            if "Id" not in entity.keys():
+                raise RequiredKeyMissingException("Id")
+            entity["id"] = entity["Id"]
+            del entity["Id"]
 
             ent = Entity(entity)
             position = [coord - off for coord, off in zip(ent.position, offset)]
@@ -510,37 +649,37 @@ class Region:
             region.entities.append(ent)
 
         # process tile entities
-        tile_entities = nbt['BlockEntities']
+        tile_entities = nbt["BlockEntities"]
         for tile_entity in tile_entities:
-            if 'Id' not in tile_entity.keys():
-                raise RequiredKeyMissingException('Id')
-            tile_entity['id'] = tile_entity['Id']
-            del tile_entity['Id']
+            if "Id" not in tile_entity.keys():
+                raise RequiredKeyMissingException("Id")
+            tile_entity["id"] = tile_entity["Id"]
+            del tile_entity["Id"]
 
             tent = TileEntity.from_nbt(tile_entity)
-            tent.position = tent.data['Pos']
-            del tile_entity['Pos']
+            tent.position = tent.data["Pos"]
+            del tile_entity["Pos"]
             region.tile_entities.append(tent)
 
         # process blocks and let __setitem__() automatically generate the palette
-        palette = nbt['Palette']
+        palette = nbt["Palette"]
         palette_dict = {}
         for block, index in palette.items():
             property_dict = {}
-            if block.find('[') == -1:
+            if block.find("[") == -1:
                 block_id = block
             else:
-                entries = block.split('[')
+                entries = block.split("[")
                 block_id = entries[0]
-                properties = entries[1].replace(']', '').split(',')
+                properties = entries[1].replace("]", "").split(",")
                 for property in properties:
-                    key, value = property.split('=')
+                    key, value = property.split("=")
                     property_dict[key] = value
 
             block_state = BlockState(block_id, **property_dict)
             palette_dict[int(index)] = block_state
 
-        for i, index in enumerate(nbt['BlockData']):
+        for i, index in enumerate(nbt["BlockData"]):
             blocks_per_layer = width * length
             y = int(i / blocks_per_layer)
             i_in_layer = i % blocks_per_layer
@@ -550,7 +689,9 @@ class Region:
 
         return region, mc_version
 
-    def to_structure_nbt(self, mc_version=MC_DATA_VERSION, gzipped=True, byteorder='big') -> nbtlib.nbt.File:
+    def to_structure_nbt(
+        self, mc_version=MC_DATA_VERSION, gzipped=True, byteorder="big"
+    ) -> nbtlib.nbt.File:
         """
         Returns the Region as an NBT Compound file that conforms to Minecraft's structure NBT files.
 
@@ -571,35 +712,41 @@ class Region:
 
         structure = nbtlib.File(gzipped=gzipped, byteorder=byteorder)
 
-        structure['size'] = List[Int]([abs(self.__width), abs(self.__height), abs(self.__length)])
-        structure['DataVersion'] = Int(mc_version)
+        structure["size"] = List[Int](
+            [abs(self.__width), abs(self.__height), abs(self.__length)]
+        )
+        structure["DataVersion"] = Int(mc_version)
 
         # process entities
         size = (self.__width, self.__height, self.__length)
         entities = List[Compound]()
         for entity in self.__entities:
             entity_tag = Compound()
-            entity_tag['nbt'] = entity.data
-            entity_tag['pos'] = List[Double](
-                [Double(coord - (0 if dim > 0 else (dim + 1))) for coord, dim in zip(entity.position, size)])
-            entity_tag['blockPos'] = List[Int](
-                [Int(coord - (0 if dim > 0 else (dim + 1))) for coord, dim in zip(entity.position, size)])
+            entity_tag["nbt"] = entity.data
+            entity_tag["pos"] = List[Double](
+                [Double(coord) for coord in entity.position]
+            )
+            entity_tag["blockPos"] = List[Int](
+                [Int(int(coord)) for coord in entity.position]
+            )
             entities.append(entity_tag)
 
-        structure['entities'] = entities
+        structure["entities"] = entities
 
         # create tile entity dictionary to add them correctly to the block list later
         tile_entity_dict = {}
         for tile_entity in self.__tile_entities:
             tile_entity_tag = Compound()
             for key, value in tile_entity.data.items():
-                if key not in ['x', 'y', 'z']:
+                if key not in ["x", "y", "z"]:
                     tile_entity_tag[key] = value
 
             tile_entity_dict[tile_entity.position] = tile_entity_tag
 
         # process palette
-        structure['palette'] = List[Compound]([block.to_nbt() for block in self.__palette])
+        structure["palette"] = List[Compound](
+            [block.to_nbt() for block in self.__palette]
+        )
 
         # process blocks
         blocks = List[Compound]()
@@ -607,17 +754,17 @@ class Region:
             block = Compound()
             position = (x, y, z)
             if position in tile_entity_dict.keys():
-                block['nbt'] = tile_entity_dict[position]
-            block['pos'] = List[Int]([Int(coord) for coord in position])
-            block['state'] = Int(self.__blocks[x, y, z])
+                block["nbt"] = tile_entity_dict[position]
+            block["pos"] = List[Int]([Int(coord) for coord in position])
+            block["state"] = Int(self.__blocks[x, y, z])
             blocks.append(block)
 
-        structure['blocks'] = blocks
+        structure["blocks"] = blocks
 
         return structure
 
     @staticmethod
-    def from_structure_nbt(structure: Compound) -> tuple['Region', str]:
+    def from_structure_nbt(structure: Compound) -> tuple["Region", str]:
         """
         Returns a Litematica Region based on an NBT Compound that conforms to Minecraft's structure NBT files.
 
@@ -629,28 +776,28 @@ class Region:
 
         # TODO Needs unit tests
 
-        mc_version = structure['DataVersion']
-        size = structure['size']
+        mc_version = structure["DataVersion"]
+        size = structure["size"]
         width = int(size[0])
         height = int(size[1])
         length = int(size[2])
         region = Region(0, 0, 0, width, height, length)
 
         # process entities
-        for entity in structure['entities']:
-            ent = Entity(entity['nbt'])
-            ent.position = entity['pos']
+        for entity in structure["entities"]:
+            ent = Entity(entity["nbt"])
+            ent.position = entity["pos"]
             region.entities.append(ent)
 
         # process blocks and let __setitem__() automatically generate the palette
-        palette = structure['palette']
-        for block in structure['blocks']:
-            x, y, z = block['pos']
-            state = block['state']
+        palette = structure["palette"]
+        for block in structure["blocks"]:
+            x, y, z = block["pos"]
+            state = block["state"]
             region[x, y, z] = BlockState.from_nbt(palette[state])
-            if 'nbt' in block.keys():
-                tile_entity = TileEntity(block['nbt'])
-                tile_entity.position = block['pos']
+            if "nbt" in block.keys():
+                tile_entity = TileEntity(block["nbt"])
+                tile_entity.position = block["pos"]
                 region.tile_entities.append(tile_entity)
 
         return region, mc_version
@@ -659,7 +806,9 @@ class Region:
         x, y, z = self.__region_coordinates_to_store_coordinates(*position)
         return self.__palette[self.__blocks[x, y, z]]
 
-    @deprecated("Region.getblock() is deprecated. Use array style syntax instead: region[x, y, z]")
+    @deprecated(
+        "Region.getblock() is deprecated. Use array style syntax instead: region[x, y, z]"
+    )
     def getblock(self, x: int, y: int, z: int) -> BlockState:
         return self.__getitem__((x, y, z))
 
@@ -672,7 +821,9 @@ class Region:
             i = len(self.__palette) - 1
         self.__blocks[x, y, z] = i
 
-    @deprecated("Region.setblock() is deprecated. Use array style syntax instead: region[x, y, z]")
+    @deprecated(
+        "Region.setblock() is deprecated. Use array style syntax instead: region[x, y, z]"
+    )
     def setblock(self, x: int, y: int, z: int, block: BlockState):
         return self.__setitem__((x, y, z), block)
 
@@ -690,7 +841,9 @@ class Region:
         # air is index zero
         return np.count_nonzero(self.__blocks)
 
-    def __region_coordinates_to_store_coordinates(self, x: int, y: int, z: int) -> tuple[int, int, int]:
+    def __region_coordinates_to_store_coordinates(
+        self, x: int, y: int, z: int
+    ) -> tuple[int, int, int]:
         if self.__width < 0:
             x -= self.__width + 1
         if self.__height < 0:
@@ -713,7 +866,7 @@ class Region:
 
     @deprecated_name("fromnbt")
     @staticmethod
-    def from_nbt(nbt: Compound) -> 'Region':
+    def from_nbt(nbt: Compound) -> "Region":
         """
         Read a region from an NBT tag.
 
@@ -743,7 +896,9 @@ class Region:
 
         blocks = nbt["BlockStates"]
         nbits = region.__get_needed_nbits()
-        bit_array = LitematicaBitArray.from_nbt_long_array(blocks, region.volume(), nbits)
+        bit_array = LitematicaBitArray.from_nbt_long_array(
+            blocks, region.volume(), nbits
+        )
         for x in range(abs(width)):
             for y in range(abs(height)):
                 for z in range(abs(length)):
@@ -873,6 +1028,17 @@ class Region:
                 for z in self.range_z():
                     yield x, y, z
 
+    def blocks(self) -> Generator[tuple[tuple[int, int, int], BlockState], None, None]:
+        """
+        Create an iterator over all blocks in this region.
+
+        Each item will be a tuple of the local coordinates of this block, and the block state itself.
+
+        :returns:   an iterator yielding (position, block_state) tuples
+        """
+        for pos in self.block_positions():
+            yield pos, self[pos]
+
     @property
     def x(self) -> int:
         """
@@ -931,9 +1097,47 @@ class Region:
     @property
     def tile_entities(self) -> list[TileEntity]:
         """
-        The tile entities within the region.
+        The tile entities in the region.
         """
         return self.__tile_entities
+
+    def get_block_entity(self, pos: tuple[int, int, int]) -> TileEntity | None:
+        """
+        Find a block entity by its position.
+
+        :param pos: The position to search for (x, y, z)
+        :returns: The block entity at that position, or None if not found
+        """
+        for entity in self.__tile_entities:
+            if entity.position == pos:
+                return entity
+        return None
+
+    def set_block_entity(self, block_entity: TileEntity) -> TileEntity | None:
+        """
+        Replace or add a block entity.
+
+        :param block_entity: The block entity to set
+        :returns: The previous block entity if there already was one at the same position, None otherwise
+        """
+        for i, entity in enumerate(self.__tile_entities):
+            if entity.position == block_entity.position:
+                self.__tile_entities[i] = block_entity
+                return entity
+        self.__tile_entities.append(block_entity)
+        return None
+
+    def remove_block_entity(self, pos: tuple[int, int, int]) -> TileEntity | None:
+        """
+        Remove the block entity at the given position.
+
+        :param pos: The position of the block entity to remove
+        :returns: The removed block entity if there was one, None otherwise
+        """
+        for i, entity in enumerate(self.__tile_entities):
+            if entity.position == pos:
+                return self.__tile_entities.pop(i)
+        return None
 
     @property
     def block_ticks(self) -> list[Compound]:
@@ -956,8 +1160,13 @@ class Region:
         self._optimize_palette()
         return tuple(self.__palette)
 
-    def as_schematic(self, name: str = DEFAULT_NAME, author: str = "", description: str = "",
-                     mc_version: int = MC_DATA_VERSION) -> Schematic:
+    def as_schematic(
+        self,
+        name: str = DEFAULT_NAME,
+        author: str = "",
+        description: str = "",
+        mc_version: int = MC_DATA_VERSION,
+    ) -> Schematic:
         """
         Creates a schematic that contains that region at the origin.
 
@@ -966,7 +1175,13 @@ class Region:
         :param description: a description for the schematic
         :param mc_version:  The Minecraft data version (you are unlikely to ever need to use this)
         """
-        return Schematic(name=name, author=author, description=description, regions={name: self}, mc_version=mc_version)
+        return Schematic(
+            name=name,
+            author=author,
+            description=description,
+            regions={name: self},
+            mc_version=mc_version,
+        )
 
     def __replace_palette_index(self, old_index: int, new_index: int) -> None:
         if old_index == new_index:
