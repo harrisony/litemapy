@@ -262,84 +262,51 @@ class Schematic:
         return True, ""
 
     def __on_region_add(self, name: str, region: "Region") -> None:
-        if self.__x_min is None:
-            self.__x_min = region.min_schem_x()
-        else:
-            self.__x_min = min(self.__x_min, region.min_schem_x())
-        if self.__x_max is None:
-            self.__x_max = region.max_schem_x()
-        else:
-            self.__x_max = max(self.__x_max, region.max_schem_x())
-        if self.__y_min is None:
-            self.__y_min = region.min_schem_y()
-        else:
-            self.__y_min = min(self.__y_min, region.min_schem_y())
-        if self.__y_max is None:
-            self.__y_max = region.max_schem_y()
-        else:
-            self.__y_max = max(self.__y_max, region.max_schem_y())
-        if self.__z_min is None:
-            self.__z_min = region.min_schem_z()
-        else:
-            self.__z_min = min(self.__z_min, region.min_schem_z())
-        if self.__z_max is None:
-            self.__z_max = region.max_schem_z()
-        else:
-            self.__z_max = max(self.__z_max, region.max_schem_z())
+        bounds = [
+            ("x_min", region.min_schem_x()),
+            ("x_max", region.max_schem_x()),
+            ("y_min", region.min_schem_y()),
+            ("y_max", region.max_schem_y()),
+            ("z_min", region.min_schem_z()),
+            ("z_max", region.max_schem_z()),
+        ]
+        for attr, value in bounds:
+            current = getattr(self, f"_Schematic__{attr}")
+            if current is None:
+                setattr(self, f"_Schematic__{attr}", value)
+            elif "min" in attr:
+                setattr(self, f"_Schematic__{attr}", min(current, value))
+            else:
+                setattr(self, f"_Schematic__{attr}", max(current, value))
 
     def __on_region_remove(self, name, region) -> None:
-        bounding_box_changed: bool = self.__x_min == region.minschemx()
-        bounding_box_changed = (
-            bounding_box_changed or self.__x_max == region.maxschemx()
-        )
-        bounding_box_changed = (
-            bounding_box_changed or self.__y_min == region.minschemy()
-        )
-        bounding_box_changed = (
-            bounding_box_changed or self.__y_max == region.maxschemy()
-        )
-        bounding_box_changed = (
-            bounding_box_changed or self.__z_min == region.minschemz()
-        )
-        bounding_box_changed = (
-            bounding_box_changed or self.__z_max == region.maxschemz()
-        )
-        if bounding_box_changed:
+        bounds = [
+            (self.__x_min, region.minschemx()),
+            (self.__x_max, region.maxschemx()),
+            (self.__y_min, region.minschemy()),
+            (self.__y_max, region.maxschemy()),
+            (self.__z_min, region.minschemz()),
+            (self.__z_max, region.maxschemz()),
+        ]
+        if any(current == region_value for current, region_value in bounds):
             self.__compute_enclosure()
 
     def __compute_enclosure(self):
         x_min, x_max, y_min, y_max, z_min, z_max = None, None, None, None, None, None
         for region in self.__regions.values():
-            x_min = (
-                min(x_min, region.minschemx())
-                if x_min is not None
-                else region.minschemx()
-            )
-            x_max = (
-                max(x_max, region.maxschemx())
-                if x_max is not None
-                else region.maxschemx()
-            )
-            y_min = (
-                min(y_min, region.minschemy())
-                if y_min is not None
-                else region.minschemy()
-            )
-            y_max = (
-                max(y_max, region.maxschemy())
-                if y_max is not None
-                else region.maxschemy()
-            )
-            z_min = (
-                min(z_min, region.minschemz())
-                if z_min is not None
-                else region.minschemz()
-            )
-            z_max = (
-                max(z_max, region.maxschemz())
-                if z_max is not None
-                else region.maxschemz()
-            )
+            for attr, region_getter in [
+                ("x_min", region.minschemx),
+                ("x_max", region.maxschemx),
+                ("y_min", region.minschemy),
+                ("y_max", region.maxschemy),
+                ("z_min", region.minschemz),
+                ("z_max", region.maxschemz),
+            ]:
+                locals()[attr] = (
+                    min(locals()[attr], region_getter())
+                    if locals()[attr] is not None
+                    else region_getter()
+                )
         self.__x_min = x_min
         self.__x_max = x_max
         self.__y_min = y_min
