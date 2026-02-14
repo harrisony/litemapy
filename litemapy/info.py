@@ -1,5 +1,8 @@
-LITEMATIC_VERSION = 6
+LITEMATIC_VERSION = 7  # Current Litematic version (v5, v6, and v7 are supported)
 LITEMATIC_SUBVERSION = 1
+LITEMATIC_VERSION_V5 = 5  # Legacy Litematic v5 (backward compatibility)
+LITEMATIC_VERSION_V6 = 6  # Litematic v6
+LITEMATIC_VERSION_V7 = 7  # Current Litematic v7
 SPONGE_VERSION = 2  # Sponge format version used by WorldEdit (https://github.com/SpongePowered/Schematic-Specification)
 MC_DATA_VERSION = 2975  # Minecraft 1.18.2 (https://minecraft.wiki/w/Data_version)
 DEFAULT_NAME = "Unnamed"  # Default name given to schematics and regions if unspecified
