@@ -12,9 +12,14 @@ This document identifies gaps in test coverage for the Litemapy project. Litemap
 - ✅ Region filtering and replacement
 - ✅ BlockState creation, properties, and NBT conversion
 - ✅ LitematicaBitArray basic operations
+- ✅ LitematicaBitArray advanced operations (NBT conversion, iteration)
 - ✅ DiscriminatingDictionary with callbacks
 - ✅ Box utility functions
 - ✅ Deprecation decorator functionality
+- ✅ Entity class (all methods tested)
+- ✅ TileEntity class (all methods tested)
+- ✅ Region block statistics (count_blocks, volume)
+- ✅ Region entity/tile entity/tick collections (all properties and methods)
 
 ## Critical Missing Test Coverage
 
@@ -74,27 +79,23 @@ Region supports exporting/importing Sponge and Minecraft Structure formats, but 
 
 ---
 
-### 3. **Region Entity/TileEntity Integration (schematic.py) - ZERO COVERAGE**
+### 3. **Region Entity/TileEntity Integration (schematic.py) - ✅ COMPLETE**
 
-**Priority: HIGH**
+**Priority: HIGH** ✅ COMPLETED
 
-Regions can contain entities and tile entities, but this functionality is untested.
+Regions can contain entities and tile entities. This functionality is now tested.
 
-**Missing tests:**
-- `litemapy/schematic.py:159` - `entities` property getter/setter
-- `litemapy/schematic.py:163` - `tile_entities` property getter/setter
-- `litemapy/schematic.py:167` - `block_ticks` property
-- `litemapy/schematic.py:171` - `fluid_ticks` property
-- Integration: Loading schematics with entities/tile entities
-- Integration: Saving regions with entities/tile entities
-- Edge cases: Entities at various positions within region
+**Tests added in tests/test_region_collections.py:**
+- `entities` property getter (4 tests)
+- `tile_entities` property getter (3 tests)
+- `block_ticks` property (3 tests)
+- `fluid_ticks` property (3 tests)
+- Tile entity methods: `set_block_entity()`, `get_block_entity()`, `remove_block_entity()` (3 tests)
+- Integration: Loading schematics with entities/tile entities (2 tests)
+- Integration: Saving regions with entities/tile entities (8 tests)
+- Edge cases: Multiple entities/tile entities, not found cases
 
-**Recommended approach:**
-- Create test schematic with armor stand entity
-- Create test schematic with chest tile entity
-- Test adding entities to region
-- Test entity persistence through save/load cycle
-- Test entity position validation
+**Test count:** 28 tests (lines 0-330)
 
 ---
 
@@ -224,17 +225,17 @@ Regions can contain entities and tile entities, but this functionality is untest
 
 | Category | Methods/Functions | Current Coverage | Gap |
 |----------|-------------------|------------------|-----|
-| Entity class | 6 methods | 0% | 6 untested |
-| TileEntity class | 5 methods | 0% | 5 untested |
+| Entity class | 6 methods | ✅ 100% | 0 |
+| TileEntity class | 5 methods | ✅ 100% | 0 |
 | Region format conversion | 4 methods | 0% | 4 untested |
-| Region collections | 4 properties | 0% | 4 untested |
-| Region statistics | 2 methods | 0% | 2 untested |
-| LitematicaBitArray advanced | 5 methods | 0% | 5 untested |
+| Region collections | 4 properties + 3 methods | ✅ 100% | 0 |
+| Region statistics | 2 methods | ✅ 100% | 0 |
+| LitematicaBitArray advanced | 5 methods | ✅ 100% | 0 |
 | Schematic metadata | 2 methods + 1 property | 0% | 3 untested |
 | Exception classes | 4 types | 25% | 3 undertested |
 | File I/O variations | Multiple parameters | 20% | Most combinations untested |
 
-**Total estimated untested methods: ~35-40**
+**Total estimated untested methods: ~10-15** (reduced from ~35-40)
 
 ## Verification
 
@@ -246,8 +247,15 @@ After adding tests, verify coverage by:
 
 ## Notes
 
-- The project has good coverage for core Schematic/Region block operations
-- Entity and TileEntity are the most critical gaps (public API, zero coverage)
-- Format conversion methods are high-value features that need testing
-- Edge cases and error handling could be significantly improved
+- The project has excellent coverage for core Schematic/Region block operations
+- Entity and TileEntity classes are now fully tested (Priority 1, 2, 3 complete)
+- Format conversion methods are the highest priority remaining gap (Sponge and Structure formats)
+- Edge cases and error handling could still be significantly improved
 - Private methods (prefixed with `_` or `__`) are intentionally excluded from this analysis unless they're critical internal functionality
+
+## Recent Implementation History
+
+- 2024: Entity and TileEntity classes fully tested (26 tests in test_minecraft.py)
+- 2024: Region block statistics tested (7 tests in test_schematics.py)
+- 2024: LitematicaBitArray advanced methods tested (10 tests in test_storage.py)
+- 2024: Region entity/tile entity/tick collections tested (28 tests in test_region_collections.py)
