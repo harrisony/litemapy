@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Optional
 
 import nbtlib
-from flate2 import StreamDecompressor
 
 
 @dataclass
