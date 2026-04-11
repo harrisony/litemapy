@@ -23,17 +23,25 @@ class BlockState:
     __block_id: str
     __properties: DiscriminatingDictionary
     __identifier_cache: Optional[str]
+    __tile_entity: Optional["TileEntity"]
 
-    def __init__(self, block_id: str, **properties: str) -> None:
+    def __init__(
+        self,
+        block_id: str,
+        tile_entity: Optional["TileEntity"] = None,
+        **properties: str,
+    ) -> None:
         """
         A block state has a block ID and a dictionary of properties.
 
         :param block_id:    the identifier of the block (e.g. *minecraft:stone*)
+        :param tile_entity: the tile entity associated with this block (e.g. chest inventory)
         :param properties:  the properties of the block state as keyword parameters (e.g. *facing="north"*)
         """
         self.__block_id = assert_valid_identifier(block_id)
         self.__properties = DiscriminatingDictionary(self.__validate, properties)
         self.__identifier_cache = None
+        self.__tile_entity = tile_entity
 
     def to_nbt(self) -> Compound:
         """
@@ -41,20 +49,24 @@ class BlockState:
         """
         root = Compound()
         root["Name"] = String(self.id)
-        properties: dict[str, str] = {String(k): String(v) for k, v in self.__properties.items()}
+        properties: dict[str, str] = {
+            String(k): String(v) for k, v in self.__properties.items()
+        }
         if len(properties) > 0:
             root["Properties"] = Compound(properties)
         return root
 
     @deprecated_name("fromnbt")
     @staticmethod
-    def from_nbt(nbt: Compound) -> 'BlockState':
+    def from_nbt(nbt: Compound) -> "BlockState":
         """
         Reads a :class:`BlockState` from an nbt tag.
         """
         block_id = assert_valid_identifier(str(nbt["Name"]))
         if "Properties" in nbt:
-            properties: dict[str, str] = {str(k): str(v) for k, v in nbt["Properties"].items()}
+            properties: dict[str, str] = {
+                str(k): str(v) for k, v in nbt["Properties"].items()
+            }
         else:
             properties: dict[str, str] = {}
         block = BlockState(block_id, **properties)
@@ -73,16 +85,16 @@ class BlockState:
         return self.__block_id
 
     @deprecated_name("with_blockid")
-    def with_id(self, block_id: str) -> 'BlockState':
+    def with_id(self, block_id: str) -> "BlockState":
         """
         Returns a new :class:`BlockState` with the same properties as this one but a different block id.
 
         :param block_id:  the block id for the new :class:`BlockState`
         """
         assert_valid_identifier(block_id)
-        return BlockState(block_id, **self.__properties)
+        return BlockState(block_id, tile_entity=self.tile_entity, **self.__properties)
 
-    def with_properties(self, **properties: Optional[str]) -> 'BlockState':
+    def with_properties(self, **properties: Optional[str]) -> "BlockState":
         """
         Returns a new copy of this :class:`BlockState` with new values for the properties given in keyword arguments.
         Using `None` as a property value removes it.
@@ -91,14 +103,33 @@ class BlockState:
 
         :returns: A copy of this :class:`BlockState` with the given properties updated to new values
         """
-        none_properties = list(map(lambda kv: kv[0], filter(lambda kv: kv[1] is None, properties.items())))
-        other = BlockState(self.id)
+        none_properties = list(
+            map(lambda kv: kv[0], filter(lambda kv: kv[1] is None, properties.items()))
+        )
+        other = BlockState(self.id, tile_entity=self.tile_entity)
         other.__properties.update(self.__properties)
         for prop_name in none_properties:
             other.__properties.pop(prop_name)
             properties.pop(prop_name)
         other.__properties.update(properties)
         return other
+
+    def with_tile_entity(self, tile_entity: Optional["TileEntity"]) -> "BlockState":
+        """
+        Returns a new copy of this :class:`BlockState` with the given tile entity.
+
+        :param tile_entity: the new tile entity
+
+        :returns: A copy of this :class:`BlockState` with the given tile entity
+        """
+        return BlockState(self.id, tile_entity=tile_entity, **self.__properties)
+
+    @property
+    def tile_entity(self) -> Optional["TileEntity"]:
+        """
+        The tile entity associated with this block state.
+        """
+        return self.__tile_entity
 
     def properties(self) -> Iterable[tuple[str, str]]:
         """
@@ -110,7 +141,10 @@ class BlockState:
 
     def __validate(self, k: Any, v: Any) -> tuple[bool, str]:
         if type(k) is not str or type(v) is not str:
-            return False, "BlockState properties should be a string => string dictionary"
+            return (
+                False,
+                "BlockState properties should be a string => string dictionary",
+            )
         return True, ""
 
     def to_block_state_identifier(self, skip_empty: bool = True) -> str:
@@ -134,9 +168,9 @@ class BlockState:
 
         identifier: str = self.__block_id
         if not skip_empty or len(self.__properties) > 0:
-            state = dumps(self.__properties, separators=(',', '='), sort_keys=True)
-            state = state.replace('{', '[').replace('}', ']')
-            state = state.replace('"', '').replace("'", '')
+            state = dumps(self.__properties, separators=(",", "="), sort_keys=True)
+            state = state.replace("{", "[").replace("}", "]")
+            state = state.replace('"', "").replace("'", "")
             identifier += state
 
         if skip_empty:
@@ -147,7 +181,10 @@ class BlockState:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, BlockState):
             return False
-        return other.__block_id == self.__block_id and other.__properties == self.__properties
+        return (
+            other.__block_id == self.__block_id
+            and other.__properties == self.__properties
+        )
 
     def __hash__(self) -> int:
         return hash(self.to_block_state_identifier())
@@ -190,26 +227,26 @@ class Entity:
         """
 
         if isinstance(str_or_nbt, str):
-            self._data = Compound({'id': String(str_or_nbt)})
+            self._data = Compound({"id": String(str_or_nbt)})
         else:
             self._data = str_or_nbt
 
         keys = self._data.keys()
-        if 'id' not in keys:
-            raise RequiredKeyMissingException('id')
-        if 'Pos' not in keys:
-            self._data['Pos'] = List[Double]([Double(0.), Double(0.), Double(0.)])
-        if 'Rotation' not in keys:
-            self._data['Rotation'] = List[Double]([Double(0.), Double(0.)])
-        if 'Motion' not in keys:
-            self._data['Motion'] = List[Double]([Double(0.), Double(0.), Double(0.)])
+        if "id" not in keys:
+            raise RequiredKeyMissingException("id")
+        if "Pos" not in keys:
+            self._data["Pos"] = List[Double]([Double(0.0), Double(0.0), Double(0.0)])
+        if "Rotation" not in keys:
+            self._data["Rotation"] = List[Double]([Double(0.0), Double(0.0)])
+        if "Motion" not in keys:
+            self._data["Motion"] = List[Double]([Double(0.0), Double(0.0), Double(0.0)])
 
-        self._id = assert_valid_identifier(self._data['id'])
-        position = [float(coord) for coord in self._data['Pos']]
+        self._id = assert_valid_identifier(self._data["id"])
+        position = [float(coord) for coord in self._data["Pos"]]
         self._position = (position[0], position[1], position[2])
-        rotation = [float(coord) for coord in self._data['Rotation']]
+        rotation = [float(coord) for coord in self._data["Rotation"]]
         self._rotation = (rotation[0], rotation[1])
-        motion = [float(coord) for coord in self._data['Motion']]
+        motion = [float(coord) for coord in self._data["Motion"]]
         self._motion = (motion[0], motion[1], motion[2])
 
     def to_nbt(self) -> Compound:
@@ -220,7 +257,7 @@ class Entity:
 
     @deprecated_name("fromnbt")
     @staticmethod
-    def from_nbt(nbt: Compound) -> 'Entity':
+    def from_nbt(nbt: Compound) -> "Entity":
         """
         Read an entity from an nbt tag.
 
@@ -230,15 +267,15 @@ class Entity:
 
     def add_tag(self, key: str, tag) -> None:
         self._data[key] = tag
-        if key == 'id':
+        if key == "id":
             self._id = str(tag)
-        if key == 'Pos':
+        if key == "Pos":
             position = [float(coord) for coord in tag]
             self._position = (position[0], position[1], position[2])
-        if key == 'Rotation':
+        if key == "Rotation":
             rotation = [float(coord) for coord in tag]
             self._rotation = (rotation[0], rotation[1])
-        if key == 'Motion':
+        if key == "Motion":
             motion = [float(coord) for coord in tag]
             self._motion = (motion[0], motion[1], motion[2])
 
@@ -257,12 +294,12 @@ class Entity:
     def data(self, data: Compound) -> None:
         # TODO Not documented because it exposes NBT
         self._data = Entity(data).data
-        self._id = str(self._data['id'])
-        position = [float(coord) for coord in self._data['Pos']]
+        self._id = str(self._data["id"])
+        position = [float(coord) for coord in self._data["Pos"]]
         self._position = (position[0], position[1], position[2])
-        rotation = [float(coord) for coord in self._data['Rotation']]
+        rotation = [float(coord) for coord in self._data["Rotation"]]
         self._rotation = (rotation[0], rotation[1])
-        motion = [float(coord) for coord in self._data['Motion']]
+        motion = [float(coord) for coord in self._data["Motion"]]
         self._motion = (motion[0], motion[1], motion[2])
 
     @property
@@ -275,7 +312,7 @@ class Entity:
     @id.setter
     def id(self, id: str) -> None:
         self._id = id
-        self._data['id'] = String(self._id)
+        self._data["id"] = String(self._id)
 
     @property
     def position(self) -> EntityPosition:
@@ -287,7 +324,7 @@ class Entity:
     @position.setter
     def position(self, position: EntityPosition) -> None:
         self._position = position
-        self._data['Pos'] = List[Double]([Double(coord) for coord in self._position])
+        self._data["Pos"] = List[Double]([Double(coord) for coord in self._position])
 
     @property
     def rotation(self) -> EntityRotation:
@@ -299,7 +336,9 @@ class Entity:
     @rotation.setter
     def rotation(self, rotation: EntityRotation) -> None:
         self._rotation = rotation
-        self._data['Rotation'] = List[Double]([Double(coord) for coord in self._rotation])
+        self._data["Rotation"] = List[Double](
+            [Double(coord) for coord in self._rotation]
+        )
 
     @property
     def motion(self) -> EntityMotion:
@@ -311,7 +350,7 @@ class Entity:
     @motion.setter
     def motion(self, motion: EntityMotion) -> None:
         self._motion = motion
-        self._data['Motion'] = List[Double]([Double(coord) for coord in self._motion])
+        self._data["Motion"] = List[Double]([Double(coord) for coord in self._motion])
 
 
 class TileEntity:
@@ -332,13 +371,13 @@ class TileEntity:
         self._data = nbt
         keys = self._data.keys()
 
-        if 'x' not in keys:
-            self._data['x'] = Int(0)
-        if 'y' not in keys:
-            self._data['y'] = Int(0)
-        if 'z' not in keys:
-            self._data['z'] = Int(0)
-        position = [int(self._data[coord]) for coord in ['x', 'y', 'z']]
+        if "x" not in keys:
+            self._data["x"] = Int(0)
+        if "y" not in keys:
+            self._data["y"] = Int(0)
+        if "z" not in keys:
+            self._data["z"] = Int(0)
+        position = [int(self._data[coord]) for coord in ["x", "y", "z"]]
         self._position = (position[0], position[1], position[2])
 
     def to_nbt(self) -> Compound:
@@ -349,7 +388,7 @@ class TileEntity:
 
     @deprecated_name("fromnbt")
     @staticmethod
-    def from_nbt(nbt: Compound) -> 'TileEntity':
+    def from_nbt(nbt: Compound) -> "TileEntity":
         """
         Reads a tile entity from an NBT tag.
 
@@ -362,11 +401,11 @@ class TileEntity:
         self._data[key] = tag
 
         pos: tuple[int, int, int] = self._position
-        if key == 'x':
+        if key == "x":
             self._position = (int(tag), pos[1], pos[2])
-        if key == 'y':
+        if key == "y":
             self._position = (pos[0], int(tag), pos[2])
-        if key == 'z':
+        if key == "z":
             self._position = (pos[0], pos[1], int(tag))
 
     def get_tag(self, key: str) -> Base:
@@ -384,7 +423,7 @@ class TileEntity:
     @data.setter
     def data(self, data: Compound):
         self._data = TileEntity(data).data
-        position = [int(self._data[coord]) for coord in ['x', 'y', 'z']]
+        position = [int(self._data[coord]) for coord in ["x", "y", "z"]]
         self._position = (position[0], position[1], position[2])
 
     @property
@@ -397,7 +436,7 @@ class TileEntity:
     @position.setter
     def position(self, position: BlockPosition):
         self._position = position
-        for coord, index in [('x', 0), ('y', 1), ('z', 2)]:
+        for coord, index in [("x", 0), ("y", 1), ("z", 2)]:
             self._data[coord] = Int(self._position[index])
 
 
@@ -442,10 +481,14 @@ def assert_valid_identifier(identifier: str) -> str:
 
 class RequiredKeyMissingException(Exception):
 
-    def __init__(self, key: str, message: str = 'The required key is missing in the (Tile)Entity\'s NBT Compound'):
+    def __init__(
+        self,
+        key: str,
+        message: str = "The required key is missing in the (Tile)Entity's NBT Compound",
+    ):
         self.key = key
         self.message = message
         super().__init__(self.message)
 
     def __str__(self) -> str:
-        return f'{self.key} -> {self.message}'
+        return f"{self.key} -> {self.message}"
