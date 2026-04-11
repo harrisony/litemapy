@@ -9,16 +9,22 @@ def test_tile_entity_copy_on_assignment():
     reg_a = Region(0, 0, 0, 5, 5, 5)
     pos_a = (1, 1, 1)
 
-    te_nbt = Compound({
-        "id": String("minecraft:hopper"),
-        "Items": List[Compound]([
-            Compound({
-                "Slot": Byte(0),
-                "id": String("minecraft:diamond"),
-                "Count": Byte(1)
-            })
-        ])
-    })
+    te_nbt = Compound(
+        {
+            "id": String("minecraft:hopper"),
+            "Items": List[Compound](
+                [
+                    Compound(
+                        {
+                            "Slot": Byte(0),
+                            "id": String("minecraft:diamond"),
+                            "Count": Byte(1),
+                        }
+                    )
+                ]
+            ),
+        }
+    )
     te = TileEntity(te_nbt)
 
     hopper = BlockState("minecraft:hopper").with_tile_entity(te)
@@ -64,21 +70,45 @@ def test_tile_entity_overwrite_with_another_tile_entity():
     reg = Region(0, 0, 0, 3, 3, 3)
     pos = (1, 1, 1)
 
-    te_diamond = TileEntity(Compound({
-        "id": String("minecraft:chest"),
-        "Items": List[Compound]([
-            Compound({"Slot": Byte(0), "id": String("minecraft:diamond"), "Count": Byte(1)})
-        ])
-    }))
+    te_diamond = TileEntity(
+        Compound(
+            {
+                "id": String("minecraft:chest"),
+                "Items": List[Compound](
+                    [
+                        Compound(
+                            {
+                                "Slot": Byte(0),
+                                "id": String("minecraft:diamond"),
+                                "Count": Byte(1),
+                            }
+                        )
+                    ]
+                ),
+            }
+        )
+    )
     reg[pos] = BlockState("minecraft:chest").with_tile_entity(te_diamond)
     assert reg[pos].tile_entity.data["Items"][0]["id"] == "minecraft:diamond"
 
-    te_emerald = TileEntity(Compound({
-        "id": String("minecraft:chest"),
-        "Items": List[Compound]([
-            Compound({"Slot": Byte(0), "id": String("minecraft:emerald"), "Count": Byte(1)})
-        ])
-    }))
+    te_emerald = TileEntity(
+        Compound(
+            {
+                "id": String("minecraft:chest"),
+                "Items": List[Compound](
+                    [
+                        Compound(
+                            {
+                                "Slot": Byte(0),
+                                "id": String("minecraft:emerald"),
+                                "Count": Byte(1),
+                            }
+                        )
+                    ]
+                ),
+            }
+        )
+    )
     reg[pos] = BlockState("minecraft:chest").with_tile_entity(te_emerald)
 
     # Old tile entity should be replaced, not accumulated
@@ -93,12 +123,24 @@ def test_get_tile_entity_returns_none_for_empty_position():
 
 
 def test_with_id_preserves_tile_entity():
-    te = TileEntity(Compound({
-        "id": String("minecraft:chest"),
-        "Items": List[Compound]([
-            Compound({"Slot": Byte(0), "id": String("minecraft:diamond"), "Count": Byte(1)})
-        ])
-    }))
+    te = TileEntity(
+        Compound(
+            {
+                "id": String("minecraft:chest"),
+                "Items": List[Compound](
+                    [
+                        Compound(
+                            {
+                                "Slot": Byte(0),
+                                "id": String("minecraft:diamond"),
+                                "Count": Byte(1),
+                            }
+                        )
+                    ]
+                ),
+            }
+        )
+    )
     chest = BlockState("minecraft:chest").with_tile_entity(te)
     barrel = chest.with_id("minecraft:barrel")
     assert barrel.id == "minecraft:barrel"
@@ -117,25 +159,51 @@ def test_with_properties_preserves_tile_entity():
 def test_litematic_round_trip_preserves_tile_entities():
     reg = Region(0, 0, 0, 5, 5, 5)
 
-    te_1 = TileEntity(Compound({
-        "id": String("minecraft:chest"),
-        "Items": List[Compound]([
-            Compound({"Slot": Byte(0), "id": String("minecraft:diamond"), "Count": Byte(64)})
-        ])
-    }))
+    te_1 = TileEntity(
+        Compound(
+            {
+                "id": String("minecraft:chest"),
+                "Items": List[Compound](
+                    [
+                        Compound(
+                            {
+                                "Slot": Byte(0),
+                                "id": String("minecraft:diamond"),
+                                "Count": Byte(64),
+                            }
+                        )
+                    ]
+                ),
+            }
+        )
+    )
     reg[1, 1, 1] = BlockState("minecraft:chest").with_tile_entity(te_1)
 
-    te_2 = TileEntity(Compound({
-        "id": String("minecraft:chest"),
-        "Items": List[Compound]([
-            Compound({"Slot": Byte(0), "id": String("minecraft:emerald"), "Count": Byte(16)})
-        ])
-    }))
+    te_2 = TileEntity(
+        Compound(
+            {
+                "id": String("minecraft:chest"),
+                "Items": List[Compound](
+                    [
+                        Compound(
+                            {
+                                "Slot": Byte(0),
+                                "id": String("minecraft:emerald"),
+                                "Count": Byte(16),
+                            }
+                        )
+                    ]
+                ),
+            }
+        )
+    )
     reg[3, 2, 1] = BlockState("minecraft:chest").with_tile_entity(te_2)
 
     reg[0, 0, 0] = BlockState("minecraft:stone")
 
-    schem = Schematic(name="te_test", author="test", description="test", regions={"main": reg})
+    schem = Schematic(
+        name="te_test", author="test", description="test", regions={"main": reg}
+    )
 
     with TemporaryDirectory() as tmp:
         file_path = path.join(tmp, "te_test.litematic")
@@ -166,16 +234,22 @@ def test_palette_does_not_leak_tile_entity():
     # to other blocks of the same type that have no TE
     reg = Region(0, 0, 0, 5, 5, 5)
 
-    te_nbt = Compound({
-        "id": String("minecraft:chest"),
-        "Items": List[Compound]([
-            Compound({
-                "Slot": Byte(0),
-                "id": String("minecraft:diamond"),
-                "Count": Byte(64)
-            })
-        ])
-    })
+    te_nbt = Compound(
+        {
+            "id": String("minecraft:chest"),
+            "Items": List[Compound](
+                [
+                    Compound(
+                        {
+                            "Slot": Byte(0),
+                            "id": String("minecraft:diamond"),
+                            "Count": Byte(64),
+                        }
+                    )
+                ]
+            ),
+        }
+    )
     te = TileEntity(te_nbt)
     chest_with_te = BlockState("minecraft:chest").with_tile_entity(te)
     chest_without_te = BlockState("minecraft:chest")
